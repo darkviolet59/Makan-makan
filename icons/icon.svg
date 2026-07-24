@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Makan Split">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff7a4d"/>
+      <stop offset="1" stop-color="#f4551e"/>
+    </linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="118" fill="url(#bg)"/>
+
+  <!-- receipt with a torn (zig-zag) bottom -->
+  <g filter="url(#sh)">
+    <path d="M150 132h150a20 20 0 0 1 20 20v238l-25-15-25 15-25-15-25 15-25-15-25 15-20-12V152a20 20 0 0 1 20-20Z" fill="#ffffff"/>
+  </g>
+  <rect x="178" y="182" width="104" height="16" rx="8" fill="#ffcbb4"/>
+  <rect x="178" y="216" width="82"  height="13" rx="6.5" fill="#ffe0d2"/>
+  <rect x="178" y="246" width="94"  height="13" rx="6.5" fill="#ffe0d2"/>
+  <rect x="178" y="276" width="70"  height="13" rx="6.5" fill="#ffe0d2"/>
+
+  <!-- split badge (÷) -->
+  <circle cx="356" cy="352" r="74" fill="#0f9d8f" stroke="#ffffff" stroke-width="13"/>
+  <rect x="320" y="344" width="72" height="16" rx="8" fill="#ffffff"/>
+  <circle cx="356" cy="322" r="9" fill="#ffffff"/>
+  <circle cx="356" cy="382" r="9" fill="#ffffff"/>
+</svg>

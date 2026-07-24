@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Makan Split — Lunch Bill Splitter</title>
+  <meta name="description" content="Snap a receipt, itemise it, split shared items, and add service charge + SST — so everyone pays back the person who covered the bill." />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#ff6a3d" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Makan Split" />
+
+  <style>
+    :root{
+      --bg:#f4f5f7; --card:#ffffff; --ink:#1b1e23; --muted:#6b7280; --line:#e6e8ec;
+      --accent:#ff6a3d; --accent-2:#f4551e; --on-accent:#ffffff; --teal:#0f9d8f;
+      --danger:#e5484d; --ok:#12996b; --chip:#eef1f4; --chip-ink:#374151;
+      --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.10);
+      --radius:16px;
+    }
+    @media (prefers-color-scheme:dark){
+      :root{
+        --bg:#0e1014; --card:#181b21; --ink:#e9ebee; --muted:#98a0ab; --line:#282d36;
+        --accent:#ff7a4d; --accent-2:#ff6a3d; --on-accent:#1a1200; --teal:#2bc3b2;
+        --danger:#ff6369; --ok:#3fcf8e; --chip:#232830; --chip-ink:#cfd4db;
+        --shadow:0 1px 3px rgba(0,0,0,.5);
+      }
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{
+      background:var(--bg); color:var(--ink);
+      font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji",sans-serif;
+      -webkit-font-smoothing:antialiased;
+    }
+    #app{max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;background:var(--bg)}
+
+    /* App bar */
+    .appbar{position:sticky;top:0;z-index:20;background:linear-gradient(135deg,var(--accent),var(--accent-2));
+      color:var(--on-accent);padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;box-shadow:var(--shadow)}
+    .appbar .row{display:flex;align-items:center;gap:10px}
+    .brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px;letter-spacing:.2px}
+    .brand .logo{width:26px;height:26px;flex:0 0 auto}
+    .spacer{flex:1}
+    .iconbtn{background:rgba(255,255,255,.18);border:0;color:inherit;width:34px;height:34px;border-radius:10px;font-size:16px;display:grid;place-items:center;cursor:pointer}
+    .iconbtn:active{transform:scale(.94)}
+    .userbar{display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(255,255,255,.16);border-radius:12px;padding:8px 10px}
+    .userbar .who{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+    .userbar .who b{font-size:14px}
+    .userbar .who span{font-size:11.5px;opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .userbar select{margin-left:auto;background:rgba(255,255,255,.22);color:var(--on-accent);border:0;border-radius:9px;padding:7px 9px;font-size:12.5px;font-weight:600;max-width:150px}
+    .userbar select option{color:#111}
+
+    /* Content */
+    .screen{padding:16px 14px calc(84px + env(safe-area-inset-bottom));flex:1}
+    h2.title{font-size:20px;margin:2px 2px 12px;font-weight:800}
+    .sub{color:var(--muted);font-size:13px}
+
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
+    .card h3{margin:0 0 10px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+    .card h3 .hint{font-weight:500;color:var(--muted);font-size:12px;margin-left:auto}
+
+    .btn{border:0;border-radius:12px;padding:12px 14px;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+    .btn:active{transform:translateY(1px)}
+    .btn-primary{background:var(--accent);color:var(--on-accent);width:100%}
+    .btn-teal{background:var(--teal);color:#fff}
+    .btn-ghost{background:var(--chip);color:var(--chip-ink)}
+    .btn-danger{background:transparent;color:var(--danger);border:1px solid var(--line)}
+    .btn-sm{padding:8px 11px;font-size:12.5px;border-radius:10px}
+    .btn-block{width:100%}
+
+    .field{margin-bottom:12px}
+    .field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:0 2px 6px}
+    input[type=text],input[type=email],input[type=number],input[type=date]{
+      width:100%;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:11px 12px;color:var(--ink);font-size:15px;font-family:inherit}
+    input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+
+    /* Empty state */
+    .empty{text-align:center;color:var(--muted);padding:36px 16px}
+    .empty .big{font-size:40px;margin-bottom:8px}
+
+    /* Event cards on home */
+    .events{display:flex;flex-direction:column;gap:10px}
+    .event-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:13px 14px;cursor:pointer;position:relative}
+    .event-card:active{transform:scale(.995)}
+    .event-card .top{display:flex;align-items:flex-start;gap:10px}
+    .event-card .nm{font-weight:800;font-size:15.5px;margin:0}
+    .event-card .dt{color:var(--muted);font-size:12.5px;margin-top:2px}
+    .event-card .amt{margin-left:auto;text-align:right}
+    .event-card .amt .v{font-weight:800;font-size:16px}
+    .event-card .amt .l{font-size:11px;color:var(--muted)}
+    .event-card .foot{display:flex;align-items:center;gap:8px;margin-top:10px}
+    .badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--chip-ink)}
+    .badge.owe{background:rgba(229,72,77,.13);color:var(--danger)}
+    .badge.owed{background:rgba(18,153,107,.14);color:var(--ok)}
+    .badge.settled{background:rgba(15,157,143,.15);color:var(--teal)}
+
+    /* Avatars */
+    .avatars{display:flex}
+    .avatar{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:800;border:2px solid var(--card);margin-left:-7px}
+    .avatar:first-child{margin-left:0}
+
+    /* Chips (people select / assign) */
+    .chips{display:flex;flex-wrap:wrap;gap:7px}
+    .chip{border:1px solid var(--line);background:var(--chip);color:var(--chip-ink);border-radius:999px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+    .chip .dot{width:16px;height:16px;border-radius:50%;color:#fff;font-size:9px;font-weight:800;display:grid;place-items:center}
+    .chip.active{background:var(--accent);color:var(--on-accent);border-color:transparent}
+    .chip.active .dot{background:rgba(255,255,255,.25)!important}
+    .chip.me{box-shadow:0 0 0 2px var(--teal) inset}
+
+    /* Item rows */
+    .item{border:1px solid var(--line);border-radius:13px;padding:11px;margin-bottom:10px;background:var(--card)}
+    .item .r1{display:flex;gap:8px;align-items:center}
+    .item .nm-in{flex:1;font-weight:600}
+    .item .price-in{width:96px;text-align:right}
+    .item .r2{display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap}
+    .item .meta{font-size:11.5px;color:var(--muted)}
+    .item .assign{margin-top:9px}
+    .tag{font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.4px}
+    .tag.shared{background:rgba(15,157,143,.15);color:var(--teal)}
+    .tag.indiv{background:var(--chip);color:var(--chip-ink)}
+    .linkbtn{background:none;border:0;color:var(--accent);font-weight:700;font-size:12px;cursor:pointer;padding:4px 6px}
+    .del{background:none;border:0;color:var(--danger);cursor:pointer;font-size:16px;padding:2px 6px}
+
+    /* Toggle switch */
+    .switch{position:relative;display:inline-block;width:44px;height:26px;flex:0 0 auto}
+    .switch input{display:none}
+    .slider{position:absolute;inset:0;background:var(--line);border-radius:999px;transition:.15s}
+    .slider:before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+    .switch input:checked + .slider{background:var(--accent)}
+    .switch input:checked + .slider:before{transform:translateX(18px)}
+    .rowline{display:flex;align-items:center;gap:10px;padding:8px 0}
+    .rowline + .rowline{border-top:1px solid var(--line)}
+    .rowline .lb{font-weight:600}
+    .rowline .rt{margin-left:auto;display:flex;align-items:center;gap:8px}
+    .rate-in{width:64px;text-align:right;padding:8px}
+
+    /* Summary */
+    .sumline{display:flex;justify-content:space-between;padding:5px 0;font-size:14px}
+    .sumline.total{border-top:1px dashed var(--line);margin-top:6px;padding-top:9px;font-weight:800;font-size:16px}
+    .sumline .muted{color:var(--muted)}
+    .yourshare{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:var(--on-accent);border:0}
+    .yourshare .sumline .muted{color:rgba(255,255,255,.85)}
+    .yourshare .sumline.total{border-top-color:rgba(255,255,255,.35)}
+    .warn{background:rgba(229,72,77,.12);color:var(--danger);border-radius:11px;padding:10px 12px;font-size:12.5px;font-weight:600;margin-top:8px}
+    .note{font-size:11.5px;color:var(--muted);margin-top:6px}
+
+    table.bd{width:100%;border-collapse:collapse;font-size:13px}
+    table.bd th,table.bd td{text-align:right;padding:7px 4px;border-bottom:1px solid var(--line)}
+    table.bd th:first-child,table.bd td:first-child{text-align:left}
+    table.bd th{color:var(--muted);font-weight:600;font-size:11.5px}
+    table.bd tr.me td{background:rgba(255,106,61,.08);font-weight:700}
+    table.bd tfoot td{font-weight:800;border-top:2px solid var(--line);border-bottom:0}
+
+    .receipt-photo{width:100%;border-radius:11px;border:1px solid var(--line);margin-top:10px;display:block}
+
+    /* People rows */
+    .prow{display:flex;gap:9px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+    .prow:last-child{border-bottom:0}
+    .prow .ins{flex:1;display:flex;flex-direction:column;gap:6px}
+
+    /* Bottom nav */
+    .bottomnav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:var(--card);border-top:1px solid var(--line);
+      display:flex;max-width:480px;margin:0 auto;padding:8px 0 calc(8px + env(safe-area-inset-bottom))}
+    .bottomnav button{flex:1;background:none;border:0;color:var(--muted);font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+    .bottomnav button .ic{font-size:19px}
+    .bottomnav button.active{color:var(--accent)}
+
+    .fab{position:sticky;bottom:0;z-index:5}
+    .backbtn{background:none;border:0;color:inherit;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:2px 0;margin-bottom:8px;color:var(--accent)}
+    .divider{height:1px;background:var(--line);margin:12px 0}
+    .flex{display:flex;gap:8px}
+    .grow{flex:1}
+    .hide{display:none!important}
+  </style>
+</head>
+<body>
+  <div id="app"><!-- rendered by app.js --></div>
+
+  <script src="app.js"></script>
+  <script>
+    // Register the service worker (relative path => works under a GitHub Pages sub-path)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('service-worker.js').catch(function (e) {
+          console.warn('SW registration failed:', e);
+        });
+      });
+    }
+    // Capture the install prompt so we can show an "Install" button in the app bar
+    window.__deferredInstall = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      window.__deferredInstall = e;
+      if (window.MS && MS.render) MS.render();
+    });
+    window.addEventListener('appinstalled', function () {
+      window.__deferredInstall = null;
+      if (window.MS && MS.render) MS.render();
+    });
+  </script>
+</body>
+</html>
