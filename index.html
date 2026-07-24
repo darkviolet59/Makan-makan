@@ -53,6 +53,9 @@
     .iconbtn:active{transform:scale(.94)}
     .cartbtn{position:relative}
     .cartbadge{position:absolute;top:-5px;right:-5px;background:var(--teal);color:#fff;font-size:10px;font-weight:800;min-width:17px;height:17px;border-radius:9px;display:grid;place-items:center;padding:0 3px;border:2px solid var(--accent)}
+    .syncdot{font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.2);color:#fff;white-space:nowrap;margin-left:8px}
+    .syncdot.synced{background:rgba(255,255,255,.3)}
+    .syncdot.error{background:rgba(220,60,60,.92)}
     .userbar{display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(255,255,255,.16);border-radius:12px;padding:8px 10px}
     .userbar .who{display:flex;flex-direction:column;line-height:1.15;min-width:0}
     .userbar .who b{font-size:14px}
@@ -221,6 +224,7 @@
 <body>
   <div id="app"><!-- rendered by app.js --></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
   <script>
     // Register the service worker (relative path => works under a GitHub Pages sub-path)

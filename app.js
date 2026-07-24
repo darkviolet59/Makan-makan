@@ -84,11 +84,12 @@
   var SUPABASE_URL = "https://umhrvolxxoliuceyrxyg.supabase.co";
   var SUPABASE_ANON_KEY = "sb_publishable_7dAEiPZcrZ4o-qRy6DxMAA_VJlx78Ae";
   var CLIENT_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
-  var sb = null, pushTimer = null, repullTimer = null, lastSynced = {};
+  var sb = null, pushTimer = null, repullTimer = null, lastSynced = {}, syncStatus = "";
 
-  function cloudEnabled() {
-    return SUPABASE_URL.indexOf("YOUR-") === -1 && SUPABASE_ANON_KEY.indexOf("YOUR-") === -1 && window.supabase;
-  }
+  function cloudConfigured() { return SUPABASE_URL.indexOf("YOUR-") === -1 && SUPABASE_ANON_KEY.indexOf("YOUR-") === -1; }
+  function cloudEnabled() { return cloudConfigured() && window.supabase; }
+  function syncLabel() { return syncStatus === "synced" ? "☁︎ Synced" : syncStatus === "error" ? "⚠︎ Sync error" : "☁︎ Syncing…"; }
+  function setSync(s) { syncStatus = s; var el = document.getElementById("syncdot"); if (el) { el.className = "syncdot " + s; el.textContent = syncLabel(); } }
   function evOrd(x) { return Number(x && x.ord) || 0; }
   function eventDoc(ev) { var d = {}; Object.keys(ev).forEach(function (k) { if (k !== "items") d[k] = ev[k]; }); return d; }
   function itemDoc(ev, it) { var d = {}; Object.keys(it).forEach(function (k) { d[k] = it[k]; }); d._event = ev.id; return d; }
@@ -143,7 +144,7 @@
           rows.push({ kind: e.kind, id: e.id, doc: e.doc, deleted: true, by: CLIENT_ID, updated_at: now });
         }
       });
-      if (rows.length) sb.from("makan_entities").upsert(rows, { onConflict: "kind,id" }).then(function () {}, function () {});
+      if (rows.length) sb.from("makan_entities").upsert(rows, { onConflict: "kind,id" }).then(function (res) { setSync(res && res.error ? "error" : "synced"); }, function () { setSync("error"); });
       var ns = {};
       Object.keys(cur).forEach(function (k) { ns[k] = { kind: cur[k].kind, id: cur[k].id, doc: cur[k].doc, deleted: false }; });
       Object.keys(lastSynced).forEach(function (k) { if (!cur[k]) ns[k] = { kind: lastSynced[k].kind, id: lastSynced[k].id, doc: lastSynced[k].doc, deleted: true }; });
@@ -153,18 +154,24 @@
   function cloudRepull() {
     if (!sb) return;
     sb.from("makan_entities").select("kind,id,doc,deleted").then(function (res) {
+      if (res && res.error) { setSync("error"); return; }
       var rows = (res && res.data) || [];
       if (rows.length) { rebuildFromRows(rows); render(); }
-    }, function () {});
+      setSync("synced");
+    }, function () { setSync("error"); });
   }
   function cloudInit() {
-    if (!cloudEnabled()) return;
-    try { sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch (e) { sb = null; return; }
+    if (!cloudConfigured()) return;
+    if (!window.supabase) { setSync("error"); return; }        // the Supabase library didn't load
+    setSync("connecting");
+    try { sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch (e) { sb = null; setSync("error"); return; }
     sb.from("makan_entities").select("kind,id,doc,deleted").then(function (res) {
+      if (res && res.error) { setSync("error"); return; }     // e.g. table not created yet
       var rows = (res && res.data) || [];
-      if (rows.length) { rebuildFromRows(rows); render(); }   // cloud already has data -> adopt it
-      else { lastSynced = {}; cloudPush(); }                  // cloud empty -> seed it from this device
-    }, function () {});
+      if (rows.length) { rebuildFromRows(rows); render(); }    // cloud already has data -> adopt it
+      else { lastSynced = {}; cloudPush(); }                   // cloud empty -> seed it from this device
+      setSync("synced");
+    }, function () { setSync("error"); });
     sb.channel("makan_entities_ch")
       .on("postgres_changes", { event: "*", schema: "public", table: "makan_entities" }, function (payload) {
         var r = payload && payload.new;
@@ -172,7 +179,7 @@
         if (repullTimer) clearTimeout(repullTimer);
         repullTimer = setTimeout(cloudRepull, 250);           // someone else changed something -> refresh
       })
-      .subscribe();
+      .subscribe(function (status) { if (status === "SUBSCRIBED") setSync("synced"); });
   }
 
   /* Ask "who are you?" once each time the app opens, before the events page. */
@@ -383,6 +390,7 @@
       '<div class="appbar">' +
         '<div class="row">' +
           '<span class="brand">' + LOGO_SVG + '<span>Makan Split</span></span>' +
+          (cloudConfigured() ? '<span id="syncdot" class="syncdot ' + syncStatus + '">' + syncLabel() + '</span>' : '') +
           '<span class="spacer"></span>' + installBtn + cartBtn +
         '</div>' +
         '<div class="userbar">' + avatar(u, 30) +
