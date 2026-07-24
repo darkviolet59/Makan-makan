@@ -16,9 +16,9 @@ once installed.
 - **Home** — a big **Create an event** button, with all your events listed below.
 - **Create an event** — pick participants from a fixed group of **16 people**,
   set the **event name** and **date**, and choose **who paid** (defaults to you).
-- **Receipt** — snap/upload a photo (kept as your reference) and **punch in each line**.
+- **Punch in each line** — add every item with a **unit price** and **quantity**.
 - **Itemise & assign** — each item is **Individual** or **Shared**; tap the people
-  who had it. Shared items are split **equally** among everyone assigned. Tap
+  who had it. A **Shared** item is split equally among the people you pick. Tap
   **＋ More** on an item to include a friend who wasn’t in the event (e.g. you’re
   buying someone a meal) — they’re folded into the split automatically.
 - **Pick who you are** — when the app opens you choose your name first; each person
@@ -27,14 +27,24 @@ once installed.
 - **Service charge + SST** — the **payer** toggles each on/off and **confirms the
   rate**. Malaysia defaults: **10% service charge** and **6% SST**, with SST charged
   on the **items subtotal (before service charge)**. Both are configurable per event.
-- **One or more payers** — mark **1, 2, or 3 people** as payers and enter what each
-  put in. Handy when you split the payment across cards.
+- **One payer per event** — each meal is paid by **one person** (pick them when you
+  create the event, or change it later; tap **＋ More** to choose someone who wasn’t
+  in the event).
+- **Combine events to settle** — group several meals (**Lunch + Tea + Dinner**, each
+  with its own payer) and the app nets everyone **across all of them** into the
+  fewest payments.
+- **Add to cart & checkout** — each diner taps **🛒 Add to cart** on what they had;
+  the **cart icon** (top-right) opens a checkout with their total and who to pay, and
+  a **Mark paid** button that sends them back to the home page.
+- **Summary tab** — a single **who-owes-who** table across every event, with mark-paid
+  that syncs back to each event.
 - **Settle up (who owes whom)** — the app works out each person’s **net** (paid −
   eaten) and reduces it to the **fewest transfers**, automatically cancelling mutual
   debts. Tick each transfer as **paid** and it greys out; a person shows **Settled ✓**
   once they’ve cleared what they owe.
 - **Live totals** — your share, a per-person net breakdown, the **grand total**, and
   a warning if any item is still unassigned.
+- **Delete events** — remove any event from the list (✕ on the card) or its own page.
 - **Installable & offline** — add to your home screen and open it like a native app.
 
 ---
@@ -58,6 +68,11 @@ A positive net means they’re owed money; a negative net means they owe. The ap
 repeatedly matches the biggest debtor to the biggest creditor, producing the fewest
 “X pays Y” transfers — so if two people owe each other, only the **difference**
 remains.
+
+**Combining meals.** When you settle several events together, each person’s *paid*
+and *eaten* totals are summed **across the events** first, then the same netting runs
+once — so lunch, tea and dinner (with different payers) collapse into a single set of
+payments.
 
 ---
 
@@ -144,9 +159,8 @@ It then launches full-screen with its own icon, and works offline.
 This build is a **fully working single-device prototype**. To make it a true
 multi-user product you’d add a small backend:
 
-- **Receipt OCR** — auto-extract line items from the photo instead of typing them.
-  Wire the “Snap receipt” button to an OCR service (e.g. Azure AI Document
-  Intelligence / Google Vision) and pre-fill the item list.
+- **Receipt OCR** — snap the receipt and auto-extract the line items (e.g. via Azure
+  AI Document Intelligence / Google Vision) to pre-fill the list instead of typing.
 - **Real accounts & sync** — replace the name-switcher “login” with email sign-in
   (e.g. Firebase Auth / Supabase / Azure) and store events in a shared database so
   each person uses their **own** phone and sees live updates.

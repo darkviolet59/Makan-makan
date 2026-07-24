@@ -51,6 +51,8 @@
     .spacer{flex:1}
     .iconbtn{background:rgba(255,255,255,.18);border:0;color:inherit;width:34px;height:34px;border-radius:10px;font-size:16px;display:grid;place-items:center;cursor:pointer}
     .iconbtn:active{transform:scale(.94)}
+    .cartbtn{position:relative}
+    .cartbadge{position:absolute;top:-5px;right:-5px;background:var(--teal);color:#fff;font-size:10px;font-weight:800;min-width:17px;height:17px;border-radius:9px;display:grid;place-items:center;padding:0 3px;border:2px solid var(--accent)}
     .userbar{display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(255,255,255,.16);border-radius:12px;padding:8px 10px}
     .userbar .who{display:flex;flex-direction:column;line-height:1.15;min-width:0}
     .userbar .who b{font-size:14px}
@@ -116,6 +118,9 @@
     .event-card .amt .v{font-weight:800;font-size:16px}
     .event-card .amt .l{font-size:11px;color:var(--muted)}
     .event-card .foot{display:flex;align-items:center;gap:8px;margin-top:10px}
+    .cardx{position:absolute;top:7px;right:7px;background:none;border:0;color:var(--muted);font-size:13px;cursor:pointer;width:26px;height:26px;border-radius:7px;line-height:1;display:grid;place-items:center}
+    .cardx:active{transform:scale(.9)}
+    .cardx:hover{color:var(--danger);background:var(--chip)}
     .badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--chip-ink)}
     .badge.owe{background:rgba(229,72,77,.13);color:var(--danger)}
     .badge.owed{background:rgba(18,153,107,.14);color:var(--ok)}
