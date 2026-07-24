@@ -98,11 +98,19 @@
     var pr = document.getElementById("pr_" + it.id); if (pr) { var p = parseFloat(pr.value); if (!isNaN(p)) it.price = p; }
     var qt = document.getElementById("qt_" + it.id); if (qt) { var q = parseInt(qt.value, 10); it.qty = (!q || q < 1) ? 1 : q; }
   }
-  // Preserve every in-progress item edit before a re-render, so nothing is lost.
+  // Read the new-item form's inputs into its draft, so toggling Shared / picking
+  // names doesn't wipe what was typed.
+  function flushAddInputs() {
+    var n = document.getElementById("ai-name"); if (n) addDraft.name = n.value;
+    var p = document.getElementById("ai-price"); if (p) addDraft.price = p.value;
+    var q = document.getElementById("ai-qty"); if (q) addDraft.qty = q.value;
+  }
+  // Preserve every in-progress item edit + the add-item draft before a re-render.
   function flushAllItemInputs() {
     if (state.ui.screen !== "event") return;
     var ev = eventById(state.ui.eventId); if (!ev) return;
     (ev.items || []).forEach(function (it) { readItemInputs(it); });
+    flushAddInputs();
   }
   function fmtDate(iso) { if (!iso) return ""; var d = new Date(iso + "T00:00:00");
     if (isNaN(d)) return iso;
@@ -250,6 +258,7 @@
   var app = document.getElementById("app");
   var lastKey = null;
   var moreOpen = {};      // per-item / per-section: is the "＋ More" list expanded?
+  var addDraft = { name: "", price: "", qty: "1", shared: false, sharedWith: [] };  // new-item form draft
   var combineSel = {};    // eventId -> selected in the "settle together" screen
 
   function avatar(u, size) { size = size || 26;
@@ -289,6 +298,18 @@
       '<button class="' + (s === "people" ? "active" : "") + '" onclick="MS.nav(\'people\')"><span class="ic">👥</span>People</button>' +
       '<button class="' + (s === "guide" ? "active" : "") + '" onclick="MS.nav(\'guide\')"><span class="ic">📖</span>Guide</button>' +
       '</div>';
+  }
+
+  // Brief confirmation message (e.g. "Saved successfully ✓").
+  function toast(msg) {
+    try {
+      var t = document.createElement("div");
+      t.className = "toast"; t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(function () { t.classList.add("show"); }, 10);
+      setTimeout(function () { t.classList.remove("show"); }, 1700);
+      setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 2000);
+    } catch (e) {}
   }
 
   function render() {
@@ -420,15 +441,33 @@
     if (!(ev.items || []).length) html += '<div class="sub" style="padding:6px 0 10px">No items yet.' + (isPayer ? ' Add the first line below.' : '') + '</div>';
     (ev.items || []).forEach(function (it) { html += itemRow(ev, it, isPayer, meId); });
     if (isPayer) {
+      var apool = assignPool(ev);
+      var aextras = state.users.filter(function (x) { return apool.indexOf(x.id) === -1; });
+      var addChip = function (id, guest) {
+        var uu = userById(id), on = addDraft.sharedWith.indexOf(id) !== -1;
+        return '<button class="chip ' + (on ? "active" : "") + (guest ? " guest" : "") + '" onclick="MS.toggleAddSharedWith(' + id + ')">' +
+          '<span class="dot" style="background:' + color(id) + '">' + esc(initials(uu.name)) + '</span>' + esc(firstName(uu)) + '</button>';
+      };
+      var amk = "add_" + ev.id;
       html += '<div class="divider"></div>' +
         '<div class="flex" style="align-items:flex-end">' +
-          '<div class="grow"><label class="sub" style="font-weight:600">Item</label><input id="ai-name" type="text" placeholder="e.g. Chicken Rice"></div>' +
-          '<div style="width:82px"><label class="sub" style="font-weight:600">Unit RM</label><input id="ai-price" type="number" inputmode="decimal" step="0.01" placeholder="0.00" style="text-align:right"></div>' +
-          '<div style="width:52px"><label class="sub" style="font-weight:600">Qty</label><input id="ai-qty" type="number" inputmode="numeric" min="1" step="1" value="1" style="text-align:right"></div>' +
+          '<div class="grow"><label class="sub" style="font-weight:600">Item</label><input id="ai-name" type="text" placeholder="e.g. Chicken Rice" value="' + attr(addDraft.name) + '"></div>' +
+          '<div style="width:82px"><label class="sub" style="font-weight:600">Unit RM</label><input id="ai-price" type="number" inputmode="decimal" step="0.01" placeholder="0.00" style="text-align:right" value="' + attr(addDraft.price) + '"></div>' +
+          '<div style="width:52px"><label class="sub" style="font-weight:600">Qty</label><input id="ai-qty" type="number" inputmode="numeric" min="1" step="1" style="text-align:right" value="' + attr(addDraft.qty || "1") + '"></div>' +
         '</div>' +
-        '<label class="rowline" style="cursor:pointer"><span class="lb">Shared <span class="sub" style="font-weight:400">(pick who below)</span></span>' +
-          '<span class="rt"><span class="switch"><input id="ai-shared" type="checkbox"><span class="slider"></span></span></span></label>' +
-        '<button class="btn btn-teal btn-block btn-sm" style="margin-top:6px" onclick="MS.addItem(\'' + ev.id + '\')">＋ Add item</button>';
+        '<label class="rowline" style="cursor:pointer"><span class="lb">Shared <span class="sub" style="font-weight:400">(pick who)</span></span>' +
+          '<span class="rt"><span class="switch"><input id="ai-shared" type="checkbox"' + (addDraft.shared ? " checked" : "") + ' onchange="MS.toggleAddShared()"><span class="slider"></span></span></span></label>';
+      if (addDraft.shared) {
+        html += '<div class="assign"><div class="sub" style="margin-bottom:6px">Who shared this?</div><div class="chips">' +
+          apool.map(function (id) { return addChip(id, false); }).join("") +
+          '<button class="chip" onclick="MS.addSharedAll(true)">All</button>' +
+          '<button class="chip" onclick="MS.addSharedAll(false)">Clear</button>' +
+          (aextras.length ? '<button class="chip more" onclick="MS.toggleMore(\'' + amk + '\')">' + (moreOpen[amk] ? "Less ▲" : "＋ More (" + aextras.length + ")") + '</button>' : '') +
+          '</div>' +
+          ((moreOpen[amk] && aextras.length) ? '<div class="chips morebox">' + aextras.map(function (x) { return addChip(x.id, true); }).join("") + '</div>' : '') +
+          '</div>';
+      }
+      html += '<button class="btn btn-teal btn-block btn-sm" style="margin-top:6px" onclick="MS.addItem(\'' + ev.id + '\')">＋ Add item</button>';
     }
     html += '</div>';
 
@@ -507,7 +546,7 @@
         '</div>' +
         '<div class="assign"><div class="chips">' +
           assignPool(ev).map(function (id) { return chipFor(id, false); }).join("") +
-          '<button class="chip" onclick="MS.assignAll(\'' + ev.id + '\',\'' + it.id + '\',true)">All</button>' +
+          (it.shared ? '<button class="chip" onclick="MS.assignAll(\'' + ev.id + '\',\'' + it.id + '\',true)">All</button>' : '') +
           '<button class="chip" onclick="MS.assignAll(\'' + ev.id + '\',\'' + it.id + '\',false)">Clear</button>' +
           (extras.length ? '<button class="chip more" onclick="MS.toggleMore(\'' + it.id + '\')">' + (moreOpen[it.id] ? 'Less ▲' : '＋ More (' + extras.length + ')') + '</button>' : '') +
         '</div>' +
@@ -518,8 +557,13 @@
         '<span style="font-weight:700">' + money(lineTotal(it)) + '</span></div>';
       html += '<div class="r2"><span class="meta">' + qtyLabel + (n ? money(perHead) + " each" : "not assigned") + '</span>' +
         '<span class="avatars" style="margin-left:auto">' + a.map(function (id) { return avatar(userById(id), 22); }).join("") + '</span></div>';
-      html += '<button class="btn btn-sm ' + (isMine ? "btn-ghost" : "btn-teal") + '" style="margin-top:9px;width:100%" onclick="MS.toggleAssign(\'' + ev.id + '\',\'' + it.id + '\',' + meId + ')">' +
-        (isMine ? "🛒 ✓ In your cart — tap to remove" : "🛒 Add to cart") + '</button>';
+      var takenByOther = !it.shared && n > 0 && !isMine;
+      if (takenByOther) {
+        html += '<div class="sub" style="margin-top:9px;text-align:center;padding:9px;background:var(--chip);border-radius:10px">🔒 Already carted by ' + esc(firstName(userById(a[0]))) + ' — mark as Shared to split</div>';
+      } else {
+        html += '<button class="btn btn-sm ' + (isMine ? "btn-ghost" : "btn-teal") + '" style="margin-top:9px;width:100%" onclick="MS.toggleAssign(\'' + ev.id + '\',\'' + it.id + '\',' + meId + ')">' +
+          (isMine ? "🛒 ✓ In your cart — tap to remove" : "🛒 Add to cart") + '</button>';
+      }
     }
     html += '</div>';
     return html;
@@ -801,7 +845,7 @@
   window.MS = {
     render: render,
     nav: function (screen, eventId) { state.ui = { screen: screen, eventId: eventId || null }; save(); render(); },
-    openEvent: function (id) { state.ui = { screen: "event", eventId: id }; save(); render(); },
+    openEvent: function (id) { addDraft = { name: "", price: "", qty: "1", shared: false, sharedWith: [] }; state.ui = { screen: "event", eventId: id }; save(); render(); },
     switchUser: function (id) { state.currentUserId = Number(id) || 1; save(); render(); },
     chooseIdentity: function (id) { state.currentUserId = Number(id) || 1; identityConfirmed = true; state.ui = { screen: "home", eventId: null }; save(); render(); },
     toggleMore: function (k) { flushAllItemInputs(); moreOpen[k] = !moreOpen[k]; render(); },
@@ -826,19 +870,39 @@
 
     addItem: function (eventId) {
       var ev = eventById(eventId); if (!ev) return;
+      flushAllItemInputs();   // also flushes the add-item draft
+      var name = (addDraft.name || "").trim(), price = parseFloat(addDraft.price);
+      if (!name || isNaN(price)) { var n = document.getElementById("ai-name"); if (n) n.focus(); return; }
+      var qty = parseInt(addDraft.qty, 10); if (!qty || qty < 1) qty = 1;
+      ev.items.push({ id: uid("it_"), name: name, price: price, qty: qty, shared: addDraft.shared,
+        assignedTo: addDraft.shared ? addDraft.sharedWith.slice() : [] });
+      addDraft = { name: "", price: "", qty: "1", shared: false, sharedWith: [] };
+      save(); render(); toast("Item added ✓");
+    },
+    toggleAddShared: function () {
       flushAllItemInputs();
-      var nameEl = document.getElementById("ai-name"), priceEl = document.getElementById("ai-price");
-      var name = (nameEl.value || "").trim(), price = parseFloat(priceEl.value);
-      if (!name || isNaN(price)) { nameEl.focus(); return; }
-      var qty = parseInt(document.getElementById("ai-qty").value, 10); if (!qty || qty < 1) qty = 1;
-      var shared = document.getElementById("ai-shared").checked;
-      ev.items.push({ id: uid("it_"), name: name, price: price, qty: qty, shared: shared,
-        assignedTo: shared ? assignPool(ev) : [] });
-      save(); render();
+      var el = document.getElementById("ai-shared");
+      addDraft.shared = el ? el.checked : !addDraft.shared;
+      if (addDraft.shared && !addDraft.sharedWith.length) {
+        var ev = eventById(state.ui.eventId); if (ev) addDraft.sharedWith = assignPool(ev).slice();
+      }
+      render();
+    },
+    toggleAddSharedWith: function (userId) {
+      flushAllItemInputs();
+      var i = addDraft.sharedWith.indexOf(userId);
+      if (i === -1) addDraft.sharedWith.push(userId); else addDraft.sharedWith.splice(i, 1);
+      render();
+    },
+    addSharedAll: function (val) {
+      flushAllItemInputs();
+      var ev = eventById(state.ui.eventId);
+      addDraft.sharedWith = (val && ev) ? assignPool(ev).slice() : [];
+      render();
     },
     saveItem: function (eventId, itemId) {
       var ev = eventById(eventId); if (!ev) return; var it = itemById(ev, itemId); if (!it) return;
-      flushAllItemInputs(); save(); render();
+      flushAllItemInputs(); save(); render(); toast("Saved successfully ✓");
     },
     removeItem: function (eventId, itemId) {
       var ev = eventById(eventId); if (!ev) return;
@@ -850,13 +914,19 @@
       flushAllItemInputs();
       it.shared = !!val;
       if (val && !(it.assignedTo || []).length) it.assignedTo = assignPool(ev);
+      if (!val && (it.assignedTo || []).length > 1) it.assignedTo = [it.assignedTo[0]];   // individual = one person
       save(); render();
     },
     toggleAssign: function (eventId, itemId, userId) {
       var ev = eventById(eventId); if (!ev) return; var it = itemById(ev, itemId); if (!it) return;
       flushAllItemInputs();
       var a = it.assignedTo || [], i = a.indexOf(userId);
-      if (i === -1) a.push(userId); else a.splice(i, 1);
+      if (i !== -1) { a.splice(i, 1); }                 // remove — always allowed
+      else if (it.shared) { a.push(userId); }           // shared — any number of people
+      else if (a.length && a[0] !== userId) {           // individual, already taken by someone else
+        if (ev.payerId === state.currentUserId) { a = [userId]; }   // the payer may reassign it
+        else { toast("Already carted by " + firstName(userById(a[0])) + " — mark it Shared to split"); return; }
+      } else { a = [userId]; }                           // individual & free — take it
       it.assignedTo = a; save(); render();
     },
     assignAll: function (eventId, itemId, val) {
@@ -913,7 +983,7 @@
         var el = document.getElementById("un_" + u.id);
         if (el) { var v = (el.value || "").trim(); if (v) u.name = v; }
       });
-      save(); render();
+      save(); render(); toast("Name saved ✓");
     },
     install: function () {
       var d = window.__deferredInstall; if (!d) return;
