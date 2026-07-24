@@ -54,16 +54,17 @@
     try { var raw = localStorage.getItem(LS_KEY); if (raw) return JSON.parse(raw); } catch (e) {}
     return seed();
   }
-  function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} }
+  function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} cloudPush(); }
   state = load();
 
   // Bring older saved events up to the current model (one payer, quantities, no photo).
   (function normalize() {
-    (state.events || []).forEach(function (ev) {
+    (state.events || []).forEach(function (ev, ei) {
       if (ev.payerId == null) ev.payerId = (Array.isArray(ev.payerIds) && ev.payerIds[0]) || ((ev.participantIds || [])[0]) || 1;
       if (!Array.isArray(ev.participantIds)) ev.participantIds = [ev.payerId];
       if (!ev.paid || typeof ev.paid !== "object") ev.paid = {};
-      (ev.items || []).forEach(function (it) { if (it.qty == null) it.qty = 1; });
+      if (ev.ord == null) ev.ord = ei + 1;
+      (ev.items || []).forEach(function (it, ii) { if (it.qty == null) it.qty = 1; if (it.ord == null) it.ord = ii + 1; });
       if (ev.serviceChargeEnabled === false) ev.serviceChargeRate = 0;   // toggles removed: 0% = off
       if (ev.sstEnabled === false) ev.sstRate = 0;
       ev.serviceChargeEnabled = (Number(ev.serviceChargeRate) || 0) > 0;
@@ -72,6 +73,107 @@
     });
     save();
   })();
+
+  /* ============================================================================
+     CLOUD SYNC (Supabase) — PER-ENTITY sync. Each event / item / person is its
+     own row, and we only push what actually changed, so people editing different
+     things at the same time merge instead of overwriting each other.
+     Paste your Project URL + publishable (anon) key below; leave the placeholders
+     to stay local-only.
+     ========================================================================== */
+  var SUPABASE_URL = "https://umhrvolxxoliuceyrxyg.supabase.co";
+  var SUPABASE_ANON_KEY = "sb_publishable_7dAEiPZcrZ4o-qRy6DxMAA_VJlx78Ae";
+  var CLIENT_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  var sb = null, pushTimer = null, repullTimer = null, lastSynced = {};
+
+  function cloudEnabled() {
+    return SUPABASE_URL.indexOf("YOUR-") === -1 && SUPABASE_ANON_KEY.indexOf("YOUR-") === -1 && window.supabase;
+  }
+  function evOrd(x) { return Number(x && x.ord) || 0; }
+  function eventDoc(ev) { var d = {}; Object.keys(ev).forEach(function (k) { if (k !== "items") d[k] = ev[k]; }); return d; }
+  function itemDoc(ev, it) { var d = {}; Object.keys(it).forEach(function (k) { d[k] = it[k]; }); d._event = ev.id; return d; }
+
+  // Flatten the shared data into independent entities (one cloud row each).
+  function entitiesFromState() {
+    var out = {};
+    (state.users || []).forEach(function (u) { out["user:" + u.id] = { kind: "user", id: String(u.id), doc: { id: u.id, name: u.name } }; });
+    (state.events || []).forEach(function (ev) {
+      out["event:" + ev.id] = { kind: "event", id: ev.id, doc: eventDoc(ev) };
+      (ev.items || []).forEach(function (it) { out["item:" + it.id] = { kind: "item", id: it.id, doc: itemDoc(ev, it) }; });
+    });
+    return out;
+  }
+  // Rebuild the nested state.users / state.events from a flat list of entity rows.
+  function rebuildFromRows(rows) {
+    var users = [], evById = {}, itemsByEv = {};
+    rows.forEach(function (r) {
+      if (r.deleted) return;
+      if (r.kind === "user") users.push({ id: Number(r.doc.id), name: r.doc.name });
+      else if (r.kind === "event") evById[r.id] = r.doc;
+      else if (r.kind === "item") { (itemsByEv[r.doc._event] = itemsByEv[r.doc._event] || []).push(r.doc); }
+    });
+    if (users.length) { users.sort(function (a, b) { return a.id - b.id; }); state.users = users; }
+    var events = [];
+    Object.keys(evById).forEach(function (eid) {
+      var ev = evById[eid];
+      ev.items = (itemsByEv[eid] || []).map(function (d) { var it = {}; Object.keys(d).forEach(function (k) { if (k !== "_event") it[k] = d[k]; }); return it; })
+        .sort(function (a, b) { return evOrd(a) - evOrd(b); });
+      events.push(ev);
+    });
+    events.sort(function (a, b) { return evOrd(a) - evOrd(b); });
+    state.events = events;
+    lastSynced = {};
+    rows.forEach(function (r) { lastSynced[r.kind + ":" + r.id] = { kind: r.kind, id: r.id, doc: r.doc, deleted: !!r.deleted }; });
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  // Push ONLY the entities that changed since our last sync (adds, edits, deletes).
+  function cloudPush() {
+    if (!sb) return;
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(function () {
+      var cur = entitiesFromState(), rows = [], now = new Date().toISOString();
+      Object.keys(cur).forEach(function (key) {
+        var e = cur[key], prev = lastSynced[key];
+        if (!prev || prev.deleted || JSON.stringify(prev.doc) !== JSON.stringify(e.doc))
+          rows.push({ kind: e.kind, id: e.id, doc: e.doc, deleted: false, by: CLIENT_ID, updated_at: now });
+      });
+      Object.keys(lastSynced).forEach(function (key) {
+        if (!cur[key] && !lastSynced[key].deleted) {
+          var e = lastSynced[key];
+          rows.push({ kind: e.kind, id: e.id, doc: e.doc, deleted: true, by: CLIENT_ID, updated_at: now });
+        }
+      });
+      if (rows.length) sb.from("makan_entities").upsert(rows, { onConflict: "kind,id" }).then(function () {}, function () {});
+      var ns = {};
+      Object.keys(cur).forEach(function (k) { ns[k] = { kind: cur[k].kind, id: cur[k].id, doc: cur[k].doc, deleted: false }; });
+      Object.keys(lastSynced).forEach(function (k) { if (!cur[k]) ns[k] = { kind: lastSynced[k].kind, id: lastSynced[k].id, doc: lastSynced[k].doc, deleted: true }; });
+      lastSynced = ns;
+    }, 400);
+  }
+  function cloudRepull() {
+    if (!sb) return;
+    sb.from("makan_entities").select("kind,id,doc,deleted").then(function (res) {
+      var rows = (res && res.data) || [];
+      if (rows.length) { rebuildFromRows(rows); render(); }
+    }, function () {});
+  }
+  function cloudInit() {
+    if (!cloudEnabled()) return;
+    try { sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch (e) { sb = null; return; }
+    sb.from("makan_entities").select("kind,id,doc,deleted").then(function (res) {
+      var rows = (res && res.data) || [];
+      if (rows.length) { rebuildFromRows(rows); render(); }   // cloud already has data -> adopt it
+      else { lastSynced = {}; cloudPush(); }                  // cloud empty -> seed it from this device
+    }, function () {});
+    sb.channel("makan_entities_ch")
+      .on("postgres_changes", { event: "*", schema: "public", table: "makan_entities" }, function (payload) {
+        var r = payload && payload.new;
+        if (r && r.by === CLIENT_ID) return;                  // ignore the echo of our own writes
+        if (repullTimer) clearTimeout(repullTimer);
+        repullTimer = setTimeout(cloudRepull, 250);           // someone else changed something -> refresh
+      })
+      .subscribe();
+  }
 
   /* Ask "who are you?" once each time the app opens, before the events page. */
   var identityConfirmed = false;
@@ -84,7 +186,7 @@
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function attr(s) { return String(s == null ? "" : s).replace(/"/g, "&quot;"); }
-  function uid(p) { state.seq = (state.seq || 0) + 1; return (p || "id_") + state.seq; }
+  function uid(p) { state.seq = (state.seq || 0) + 1; return (p || "id_") + state.seq + "_" + CLIENT_ID.slice(0, 4); }
   function userById(id) { for (var i = 0; i < state.users.length; i++) if (state.users[i].id === id) return state.users[i]; return { id: id, name: "?" }; }
   function firstName(u) { return (u.name || "").trim().split(/\s+/)[0] || ("P" + u.id); }
   function initials(name) { var p = String(name || "").trim().split(/\s+/); return ((p[0] || "?")[0] + (p[1] ? p[1][0] : "")).toUpperCase(); }
@@ -860,7 +962,8 @@
       document.querySelectorAll(".ce-p:checked").forEach(function (c) { ids.push(Number(c.value)); });
       if (ids.indexOf(state.currentUserId) === -1) ids.unshift(state.currentUserId);
       if (ids.indexOf(payer) === -1) ids.push(payer);
-      var ev = { id: uid("evt_"), name: name, date: date, payerId: payer, participantIds: ids,
+      var eid = uid("evt_");
+      var ev = { id: eid, ord: state.seq, name: name, date: date, payerId: payer, participantIds: ids,
         serviceChargeEnabled: true, serviceChargeRate: DEFAULT_SC, sstEnabled: true, sstRate: DEFAULT_SST,
         paid: {}, items: [] };
       state.events.push(ev);
@@ -874,7 +977,8 @@
       var name = (addDraft.name || "").trim(), price = parseFloat(addDraft.price);
       if (!name || isNaN(price)) { var n = document.getElementById("ai-name"); if (n) n.focus(); return; }
       var qty = parseInt(addDraft.qty, 10); if (!qty || qty < 1) qty = 1;
-      ev.items.push({ id: uid("it_"), name: name, price: price, qty: qty, shared: addDraft.shared,
+      var iid = uid("it_");
+      ev.items.push({ id: iid, ord: state.seq, name: name, price: price, qty: qty, shared: addDraft.shared,
         assignedTo: addDraft.shared ? addDraft.sharedWith.slice() : [] });
       addDraft = { name: "", price: "", qty: "1", shared: false, sharedWith: [] };
       save(); render(); toast("Item added ✓");
@@ -995,4 +1099,5 @@
 
   if (!identityConfirmed) state.ui = { screen: "identity", eventId: null };
   render();
+  cloudInit();
 })();
