@@ -17,6 +17,8 @@ once installed.
 - **Create an event** — pick participants from a fixed group of **16 people**,
   set the **event name** and **date**, and choose **who paid** (defaults to you).
 - **Punch in each line** — add every item with a **unit price** and **quantity**.
+  The payer edits an item's name/price/qty and taps **💾 Save** to commit the change
+  (other actions preserve in-progress edits too, so nothing is lost).
 - **Itemise & assign** — each item is **Individual** or **Shared**; tap the people
   who had it. A **Shared** item is split equally among the people you pick. Tap
   **＋ More** on an item to include a friend who wasn’t in the event (e.g. you’re

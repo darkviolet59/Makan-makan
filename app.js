@@ -87,6 +87,19 @@
   function color(id) { return AV_COLORS[(id - 1) % AV_COLORS.length]; }
   function eventById(id) { for (var i = 0; i < state.events.length; i++) if (state.events[i].id === id) return state.events[i]; return null; }
   function itemById(ev, id) { var a = ev.items || []; for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i]; return null; }
+  // Read an item's draft inputs (name / price / qty) from the DOM into state.
+  function readItemInputs(it) {
+    if (!it) return;
+    var nm = document.getElementById("nm_" + it.id); if (nm) it.name = nm.value;
+    var pr = document.getElementById("pr_" + it.id); if (pr) { var p = parseFloat(pr.value); if (!isNaN(p)) it.price = p; }
+    var qt = document.getElementById("qt_" + it.id); if (qt) { var q = parseInt(qt.value, 10); it.qty = (!q || q < 1) ? 1 : q; }
+  }
+  // Preserve every in-progress item edit before a re-render, so nothing is lost.
+  function flushAllItemInputs() {
+    if (state.ui.screen !== "event") return;
+    var ev = eventById(state.ui.eventId); if (!ev) return;
+    (ev.items || []).forEach(function (it) { readItemInputs(it); });
+  }
   function fmtDate(iso) { if (!iso) return ""; var d = new Date(iso + "T00:00:00");
     if (isNaN(d)) return iso;
     return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" }); }
@@ -479,12 +492,13 @@
           '<span class="dot" style="background:' + color(id) + '">' + esc(initials(uu.name)) + '</span>' + esc(firstName(uu)) + '</button>';
       };
       html += '<div class="r1">' +
-          '<input class="nm-in" type="text" value="' + attr(it.name) + '" onchange="MS.updateItem(\'' + ev.id + '\',\'' + it.id + '\',\'name\',this.value)">' +
+          '<input id="nm_' + it.id + '" class="nm-in" type="text" value="' + attr(it.name) + '">' +
+          '<button class="btn btn-sm btn-teal" title="Save changes to this item" onclick="MS.saveItem(\'' + ev.id + '\',\'' + it.id + '\')">💾 Save</button>' +
           '<button class="del" title="Remove" onclick="MS.removeItem(\'' + ev.id + '\',\'' + it.id + '\')">🗑</button>' +
         '</div>' +
         '<div class="r2" style="gap:8px">' +
-          '<span class="meta">RM</span><input class="price-in" style="width:78px" type="number" inputmode="decimal" step="0.01" value="' + attr(it.price) + '" onchange="MS.updateItem(\'' + ev.id + '\',\'' + it.id + '\',\'price\',this.value)">' +
-          '<span class="meta">×</span><input class="price-in" style="width:52px" type="number" inputmode="numeric" min="1" step="1" value="' + attr(it.qty || 1) + '" onchange="MS.updateItem(\'' + ev.id + '\',\'' + it.id + '\',\'qty\',this.value)">' +
+          '<span class="meta">RM</span><input id="pr_' + it.id + '" class="price-in" style="width:78px" type="number" inputmode="decimal" step="0.01" value="' + attr(it.price) + '">' +
+          '<span class="meta">×</span><input id="qt_' + it.id + '" class="price-in" style="width:52px" type="number" inputmode="numeric" min="1" step="1" value="' + attr(it.qty || 1) + '">' +
           '<span class="meta" style="margin-left:auto;font-weight:700">' + money(lineTotal(it)) + '</span>' +
         '</div>' +
         '<div class="r2">' + tag +
@@ -750,7 +764,7 @@
     openEvent: function (id) { state.ui = { screen: "event", eventId: id }; save(); render(); },
     switchUser: function (id) { state.currentUserId = Number(id) || 1; save(); render(); },
     chooseIdentity: function (id) { state.currentUserId = Number(id) || 1; identityConfirmed = true; state.ui = { screen: "home", eventId: null }; save(); render(); },
-    toggleMore: function (k) { moreOpen[k] = !moreOpen[k]; render(); },
+    toggleMore: function (k) { flushAllItemInputs(); moreOpen[k] = !moreOpen[k]; render(); },
     openCombine: function () { combineSel = {}; state.events.forEach(function (e) { combineSel[e.id] = true; }); state.ui = { screen: "combine", eventId: null }; save(); render(); },
     toggleCombine: function (id) { combineSel[id] = !combineSel[id]; render(); },
 
@@ -772,6 +786,7 @@
 
     addItem: function (eventId) {
       var ev = eventById(eventId); if (!ev) return;
+      flushAllItemInputs();
       var nameEl = document.getElementById("ai-name"), priceEl = document.getElementById("ai-price");
       var name = (nameEl.value || "").trim(), price = parseFloat(priceEl.value);
       if (!name || isNaN(price)) { nameEl.focus(); return; }
@@ -781,35 +796,37 @@
         assignedTo: shared ? assignPool(ev) : [] });
       save(); render();
     },
-    updateItem: function (eventId, itemId, field, value) {
+    saveItem: function (eventId, itemId) {
       var ev = eventById(eventId); if (!ev) return; var it = itemById(ev, itemId); if (!it) return;
-      if (field === "price") it.price = parseFloat(value) || 0;
-      else if (field === "qty") { var q = parseInt(value, 10); it.qty = (!q || q < 1) ? 1 : q; }
-      else it[field] = value;
-      save(); render();
+      flushAllItemInputs(); save(); render();
     },
     removeItem: function (eventId, itemId) {
       var ev = eventById(eventId); if (!ev) return;
+      flushAllItemInputs();
       ev.items = (ev.items || []).filter(function (x) { return x.id !== itemId; }); save(); render();
     },
     setShared: function (eventId, itemId, val) {
       var ev = eventById(eventId); if (!ev) return; var it = itemById(ev, itemId); if (!it) return;
+      flushAllItemInputs();
       it.shared = !!val;
       if (val && !(it.assignedTo || []).length) it.assignedTo = assignPool(ev);
       save(); render();
     },
     toggleAssign: function (eventId, itemId, userId) {
       var ev = eventById(eventId); if (!ev) return; var it = itemById(ev, itemId); if (!it) return;
+      flushAllItemInputs();
       var a = it.assignedTo || [], i = a.indexOf(userId);
       if (i === -1) a.push(userId); else a.splice(i, 1);
       it.assignedTo = a; save(); render();
     },
     assignAll: function (eventId, itemId, val) {
       var ev = eventById(eventId); if (!ev) return; var it = itemById(ev, itemId); if (!it) return;
+      flushAllItemInputs();
       it.assignedTo = val ? assignPool(ev) : []; save(); render();
     },
     setCharge: function (eventId) {
       var ev = eventById(eventId); if (!ev) return;
+      flushAllItemInputs();
       ev.serviceChargeEnabled = document.getElementById("sc-on").checked;
       ev.serviceChargeRate = parseFloat(document.getElementById("sc-rate").value) || 0;
       ev.sstEnabled = document.getElementById("sst-on").checked;
@@ -817,10 +834,11 @@
       save(); render();
     },
     setPayer: function (eventId, userId) {
-      var ev = eventById(eventId); if (!ev) return; ev.payerId = Number(userId); save(); render();
+      var ev = eventById(eventId); if (!ev) return; flushAllItemInputs(); ev.payerId = Number(userId); save(); render();
     },
     markPaid: function (eventId, fromId, toId, val) {
       var ev = eventById(eventId); if (!ev) return;
+      flushAllItemInputs();
       if (!ev.paid) ev.paid = {};
       var k = xferKey(fromId, toId);
       if (val) ev.paid[k] = true; else delete ev.paid[k];
