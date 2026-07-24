@@ -15,17 +15,26 @@ once installed.
 
 - **Home** — a big **Create an event** button, with all your events listed below.
 - **Create an event** — pick participants from a fixed group of **16 people**,
-  set the **event name** and **date**. The creator is the person who paid the bill.
+  set the **event name** and **date**, and choose **who paid** (defaults to you).
 - **Receipt** — snap/upload a photo (kept as your reference) and **punch in each line**.
 - **Itemise & assign** — each item is **Individual** or **Shared**; tap the people
-  who had it. Shared items are split **equally** among everyone assigned.
-- **“Log in” as any person** — switch identity from the top bar; each person taps
-  the items they had, and shared items they’re part of show up automatically.
+  who had it. Shared items are split **equally** among everyone assigned. Tap
+  **＋ More** on an item to include a friend who wasn’t in the event (e.g. you’re
+  buying someone a meal) — they’re folded into the split automatically.
+- **Pick who you are** — when the app opens you choose your name first; each person
+  then taps the items they had, and shared items they’re part of show up
+  automatically. Switch person anytime from the top bar. No accounts or emails.
 - **Service charge + SST** — the **payer** toggles each on/off and **confirms the
-  rate**. Malaysia defaults: **10% service charge**, then **6% SST** on
-  (subtotal + service charge). Both are configurable per event.
-- **Live totals** — “your share”, a full **per-person breakdown**, the **grand
-  total**, and a warning if any item is still unassigned.
+  rate**. Malaysia defaults: **10% service charge** and **6% SST**, with SST charged
+  on the **items subtotal (before service charge)**. Both are configurable per event.
+- **One or more payers** — mark **1, 2, or 3 people** as payers and enter what each
+  put in. Handy when you split the payment across cards.
+- **Settle up (who owes whom)** — the app works out each person’s **net** (paid −
+  eaten) and reduces it to the **fewest transfers**, automatically cancelling mutual
+  debts. Tick each transfer as **paid** and it greys out; a person shows **Settled ✓**
+  once they’ve cleared what they owe.
+- **Live totals** — your share, a per-person net breakdown, the **grand total**, and
+  a warning if any item is still unassigned.
 - **Installable & offline** — add to your home screen and open it like a native app.
 
 ---
@@ -36,14 +45,19 @@ For each person:
 
 ```
 their subtotal = Σ (item price ÷ number of people sharing that item)   // only items they’re on
-service charge = subtotal × service-charge %          (if enabled)
-SST            = (subtotal + service charge) × SST %   (default base; toggle-able)
+service charge = subtotal × service-charge %   (if enabled)
+SST            = subtotal × SST %               (on the subtotal, before service charge)
 they owe       = subtotal + service charge + SST
 ```
 
 Because every step is proportional, the sum of everyone’s totals equals the grand
-total on the receipt. You can switch SST to apply on the subtotal only if your
-receipt is calculated that way.
+total on the receipt.
+
+**Settling up.** Each person’s **net** is what they *paid* minus what they *ate*.
+A positive net means they’re owed money; a negative net means they owe. The app
+repeatedly matches the biggest debtor to the biggest creditor, producing the fewest
+“X pays Y” transfers — so if two people owe each other, only the **difference**
+remains.
 
 ---
 

@@ -86,6 +86,25 @@
     .empty{text-align:center;color:var(--muted);padding:36px 16px}
     .empty .big{font-size:40px;margin-bottom:8px}
 
+    /* Identity chooser */
+    .welcome{text-align:center;padding:16px 8px 4px}
+    .welcome h2{font-size:22px;margin:0 0 6px;font-weight:800}
+    .idgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+    .idcard{display:flex;flex-direction:column;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 10px;cursor:pointer;font-weight:700;font-size:14px;color:var(--ink);box-shadow:var(--shadow);font-family:inherit}
+    .idcard:active{transform:scale(.97)}
+
+    /* Settle-up */
+    .pill{display:inline-block;font-size:12.5px;font-weight:800;padding:5px 11px;border-radius:999px}
+    .pill.owe{background:rgba(229,72,77,.13);color:var(--danger)}
+    .pill.get{background:rgba(18,153,107,.14);color:var(--ok)}
+    .pill.done{background:rgba(15,157,143,.15);color:var(--teal)}
+    .payrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+    .payrow:first-child{border-top:0}
+    .xfer{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line)}
+    .xfer .xamt{font-weight:800;font-size:15px}
+    .strike{text-decoration:line-through;opacity:.7}
+    .dim{opacity:.5}
+
     /* Event cards on home */
     .events{display:flex;flex-direction:column;gap:10px}
     .event-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:13px 14px;cursor:pointer;position:relative}
@@ -114,6 +133,9 @@
     .chip.active{background:var(--accent);color:var(--on-accent);border-color:transparent}
     .chip.active .dot{background:rgba(255,255,255,.25)!important}
     .chip.me{box-shadow:0 0 0 2px var(--teal) inset}
+    .chip.more{background:transparent;border-style:dashed;color:var(--accent);font-weight:700}
+    .chip.guest{border-style:dashed}
+    .morebox{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
 
     /* Item rows */
     .item{border:1px solid var(--line);border-radius:13px;padding:11px;margin-bottom:10px;background:var(--card)}
