@@ -358,7 +358,7 @@
       html += '<div class="event-card" onclick="MS.openEvent(\'' + ev.id + '\')">' +
         '<button class="cardx" title="Delete" onclick="event.stopPropagation();MS.deleteEvent(\'' + ev.id + '\')">✕</button>' +
         '<div class="top">' +
-          '<div style="padding-right:22px"><p class="nm">' + esc(ev.name) + '</p><div class="dt">' + esc(fmtDate(ev.date)) + ' · Paid by ' + esc(firstName(userById(ev.payerId))) + '</div></div>' +
+          '<div><p class="nm">' + esc(ev.name) + '</p><div class="dt">' + esc(fmtDate(ev.date)) + ' · Paid by ' + esc(firstName(userById(ev.payerId))) + '</div></div>' +
           '<div class="amt"><div class="v">' + money(sum.grand) + '</div><div class="l">total bill</div></div>' +
         '</div>' +
         '<div class="foot"><div class="avatars">' + avs + '</div>' + chip + '</div>' +
@@ -787,11 +787,13 @@
   function screenPeople() {
     var rows = state.users.map(function (u) {
       return '<div class="prow">' + avatar(u, 34) +
-        '<div class="ins"><input type="text" value="' + attr(u.name) + '" placeholder="Name" onchange="MS.saveUser(' + u.id + ',this.value)"></div></div>';
+        '<div class="ins"><input id="un_' + u.id + '" type="text" value="' + attr(u.name) + '" placeholder="Name"></div>' +
+        '<button class="btn btn-sm btn-teal" onclick="MS.saveUser(' + u.id + ')">💾 Save</button>' +
+      '</div>';
     }).join("");
     return '<button class="backbtn" onclick="MS.nav(\'home\')">‹ Back</button>' +
       '<h2 class="title">People (' + MAX_PEOPLE + ')</h2>' +
-      '<div class="sub" style="margin:-6px 2px 12px">This app is set up for a fixed group of ' + MAX_PEOPLE + '. Name your regular lunch crew here — each person just picks their name when they open the app.</div>' +
+      '<div class="sub" style="margin:-6px 2px 12px">Tap a name to rename anyone in your lunch crew, then tap 💾 Save.</div>' +
       '<div class="card">' + rows + '</div>';
   }
 
@@ -905,8 +907,13 @@
       delete combineSel[eventId];
       state.ui = { screen: "home", eventId: null }; save(); render();
     },
-    saveUser: function (userId, value) {
-      var u = userById(userId); if (!u) return; u.name = value; save(); render();
+    saveUser: function (userId) {
+      // Commit every edited name (so pending edits on other rows aren't lost).
+      state.users.forEach(function (u) {
+        var el = document.getElementById("un_" + u.id);
+        if (el) { var v = (el.value || "").trim(); if (v) u.name = v; }
+      });
+      save(); render();
     },
     install: function () {
       var d = window.__deferredInstall; if (!d) return;
