@@ -1,6 +1,14 @@
-/* Makan Split — service worker (offline app shell)
-   Bump CACHE whenever you change any cached file, to force an update. */
-var CACHE = "makan-split-v1";
+/* Makan Split — service worker (offline support + always-fresh code)
+
+   Strategy:
+   - App CODE (index.html, app.js) is served NETWORK-FIRST: the newest version
+     always loads when you're online, so uploading a new app.js takes effect on
+     the next reload — no need to bump a version by hand. Offline falls back to
+     the last cached copy.
+   - Static assets (icons, manifest) are cache-first for speed.
+
+   Bump CACHE only if you want to force a fully clean re-cache. */
+var CACHE = "makan-split-v3";
 var ASSETS = [
   "index.html",
   "app.js",
@@ -16,10 +24,7 @@ var ASSETS = [
 self.addEventListener("install", function (e) {
   e.waitUntil(
     caches.open(CACHE).then(function (c) {
-      // Add individually so one missing asset doesn't fail the whole install.
-      return Promise.all(ASSETS.map(function (url) {
-        return c.add(url).catch(function () { /* ignore */ });
-      }));
+      return Promise.all(ASSETS.map(function (url) { return c.add(url).catch(function () {}); }));
     }).then(function () { return self.skipWaiting(); })
   );
 });
@@ -36,20 +41,34 @@ self.addEventListener("fetch", function (e) {
   var req = e.request;
   if (req.method !== "GET") return;
 
-  // App-shell navigation: try network, fall back to cached index.html (offline).
-  if (req.mode === "navigate") {
-    e.respondWith(fetch(req).catch(function () { return caches.match("index.html"); }));
+  var path = new URL(req.url).pathname;
+  var isCode = req.mode === "navigate" || /\.(?:html|js)$/.test(path);
+
+  if (isCode) {
+    // Network-first: fetch the freshest code (bypassing the HTTP cache), update
+    // the cache, and fall back to the cached copy (or index.html) when offline.
+    e.respondWith(
+      fetch(new Request(req.url, { cache: "reload", credentials: "same-origin" }))
+        .then(function (res) {
+          var copy = res.clone();
+          caches.open(CACHE).then(function (c) { c.put(req, copy); });
+          return res;
+        })
+        .catch(function () {
+          return caches.match(req).then(function (c) { return c || caches.match("index.html"); });
+        })
+    );
     return;
   }
 
-  // Everything else: cache-first, then network (and cache the response).
+  // Cache-first for static assets.
   e.respondWith(
     caches.match(req).then(function (cached) {
       return cached || fetch(req).then(function (res) {
         var copy = res.clone();
         caches.open(CACHE).then(function (c) { c.put(req, copy); });
         return res;
-      }).catch(function () { return cached; });
+      });
     })
   );
 });

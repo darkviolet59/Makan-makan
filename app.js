@@ -64,6 +64,10 @@
       if (!Array.isArray(ev.participantIds)) ev.participantIds = [ev.payerId];
       if (!ev.paid || typeof ev.paid !== "object") ev.paid = {};
       (ev.items || []).forEach(function (it) { if (it.qty == null) it.qty = 1; });
+      if (ev.serviceChargeEnabled === false) ev.serviceChargeRate = 0;   // toggles removed: 0% = off
+      if (ev.sstEnabled === false) ev.sstRate = 0;
+      ev.serviceChargeEnabled = (Number(ev.serviceChargeRate) || 0) > 0;
+      ev.sstEnabled = (Number(ev.sstRate) || 0) > 0;
       delete ev.payerIds; delete ev.payments; delete ev.receiptThumb; delete ev.status; delete ev.sstOnServiceCharge;
     });
     save();
@@ -289,6 +293,7 @@
       '<button class="' + (s === "home" || s === "event" || s === "create" || s === "combine" || s === "checkout" ? "active" : "") + '" onclick="MS.nav(\'home\')"><span class="ic">🏠</span>Events</button>' +
       '<button class="' + (s === "summary" ? "active" : "") + '" onclick="MS.nav(\'summary\')"><span class="ic">📊</span>Summary</button>' +
       '<button class="' + (s === "people" ? "active" : "") + '" onclick="MS.nav(\'people\')"><span class="ic">👥</span>People</button>' +
+      '<button class="' + (s === "guide" ? "active" : "") + '" onclick="MS.nav(\'guide\')"><span class="ic">📖</span>Guide</button>' +
       '</div>';
   }
 
@@ -308,6 +313,7 @@
         case "combine":  body = screenCombine();  break;
         case "summary":  body = screenSummary();  break;
         case "people":   body = screenPeople();   break;
+        case "guide":    body = screenGuide();    break;
         default:         body = screenHome();
       }
       out = appbar() + '<div class="screen">' + body + '</div>' + bottomnav();
@@ -529,12 +535,10 @@
     if (editable) {
       return '<div class="card"><h3>Service charge & SST <span class="hint">payer confirms</span></h3>' +
         '<div class="rowline"><span class="lb">Service charge</span><span class="rt">' +
-          '<input class="rate-in" type="number" step="0.5" value="' + attr(ev.serviceChargeRate) + '" onchange="MS.setCharge(\'' + ev.id + '\')" id="sc-rate">%' +
-          '<span class="switch"><input id="sc-on" type="checkbox"' + (ev.serviceChargeEnabled ? " checked" : "") + ' onchange="MS.setCharge(\'' + ev.id + '\')"><span class="slider"></span></span></span></div>' +
+          '<input class="rate-in" type="number" step="0.5" min="0" value="' + attr(ev.serviceChargeRate) + '" onchange="MS.setCharge(\'' + ev.id + '\')" id="sc-rate">%</span></div>' +
         '<div class="rowline"><span class="lb">SST</span><span class="rt">' +
-          '<input class="rate-in" type="number" step="0.5" value="' + attr(ev.sstRate) + '" onchange="MS.setCharge(\'' + ev.id + '\')" id="sst-rate">%' +
-          '<span class="switch"><input id="sst-on" type="checkbox"' + (ev.sstEnabled ? " checked" : "") + ' onchange="MS.setCharge(\'' + ev.id + '\')"><span class="slider"></span></span></span></div>' +
-        '<div class="note">SST is charged on the items subtotal, before service charge. Malaysia default: 10% service charge and 6% SST.</div>' +
+          '<input class="rate-in" type="number" step="0.5" min="0" value="' + attr(ev.sstRate) + '" onchange="MS.setCharge(\'' + ev.id + '\')" id="sst-rate">%</span></div>' +
+        '<div class="note">SST is charged on the items subtotal, before service charge. Malaysia default: 10% service charge and 6% SST. Set a rate to 0 to remove it.</div>' +
       '</div>';
     }
     return '<div class="card"><h3>Service charge & SST</h3>' +
@@ -745,6 +749,31 @@
     return html;
   }
 
+  /* ------------------------------ GUIDE --------------------------------- */
+  function screenGuide() {
+    function step(n, title, body) {
+      return '<div class="gstep"><span class="gnum">' + n + '</span><div><b>' + title + '</b><div class="sub">' + body + '</div></div></div>';
+    }
+    return '<h2 class="title">📖 How to use Makan Split</h2>' +
+      '<div class="card"><h3>The basics</h3>' +
+        step(1, "Pick who you are", "Tap 🔄 at the top any time to switch to another person.") +
+        step(2, "Create an event", "One event = one meal. Set the name, the date, and who paid the bill.") +
+        step(3, "Add the items", "Punch in each line with a unit price and quantity. Tap 💾 Save to commit an edit.") +
+        step(4, "Mark shared items", "Flip “Shared” and tap the people who split it. Use ＋ More to add a friend who wasn’t in the event.") +
+      '</div>' +
+      '<div class="card"><h3>Paying your share</h3>' +
+        step(5, "Add to cart", "As a diner, tap 🛒 Add to cart on the items you had.") +
+        step(6, "Checkout", "Tap the 🛒 cart icon (top-right) to see your total and who to pay, then Mark paid — you’ll return to the home page.") +
+      '</div>' +
+      '<div class="card"><h3>Settling up</h3>' +
+        step(7, "Service charge & SST", "The payer sets the rates (Malaysia: 10% service charge + 6% SST on the subtotal). Set a rate to 0 to remove it.") +
+        step(8, "Who owes who", "Each event’s “Settle up” shows who pays the payer, with a Mark paid button.") +
+        step(9, "Combine meals", "On the Events page, “🧮 Settle several events together” nets lunch + tea + dinner into the fewest payments.") +
+        step(10, "Summary tab", "📊 Summary shows the overall who-owes-who across every event.") +
+      '</div>' +
+      '<div class="note" style="text-align:center">Everything is saved on your device — no account needed.</div>';
+  }
+
   /* ------------------------------ PEOPLE -------------------------------- */
   function screenPeople() {
     var rows = state.users.map(function (u) {
@@ -827,10 +856,10 @@
     setCharge: function (eventId) {
       var ev = eventById(eventId); if (!ev) return;
       flushAllItemInputs();
-      ev.serviceChargeEnabled = document.getElementById("sc-on").checked;
       ev.serviceChargeRate = parseFloat(document.getElementById("sc-rate").value) || 0;
-      ev.sstEnabled = document.getElementById("sst-on").checked;
       ev.sstRate = parseFloat(document.getElementById("sst-rate").value) || 0;
+      ev.serviceChargeEnabled = ev.serviceChargeRate > 0;   // a charge applies when its rate > 0
+      ev.sstEnabled = ev.sstRate > 0;
       save(); render();
     },
     setPayer: function (eventId, userId) {
