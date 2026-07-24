@@ -187,13 +187,15 @@
     return { transfers: transfers, nets: nets, myOwe: myOwe, myOwed: myOwed, outstanding: outstanding };
   }
 
-  // Cart badge count: for a diner, items they've claimed; for the payer, people who still owe them.
-  function cartCount(ev, me) {
-    if (ev.payerId === me) {
-      var info = settleInfo(ev);
-      return info.transfers.filter(function (t) { return t.to === me && !transferPaid(ev, t); }).length;
-    }
-    return (ev.items || []).filter(function (it) { return (it.assignedTo || []).indexOf(me) !== -1; }).length;
+  // Cart badge: total items the current user still owes for, across ALL events.
+  function cartCount(me) {
+    var c = 0;
+    state.events.forEach(function (e) {
+      if (e.payerId !== me && share(e, me).total > EPS && !transferPaid(e, { from: me, to: e.payerId })) {
+        (e.items || []).forEach(function (it) { if ((it.assignedTo || []).indexOf(me) !== -1) c++; });
+      }
+    });
+    return c;
   }
 
   // Aggregate settle-up across several events (each with its own single payer).
@@ -264,21 +266,13 @@
     var opts = state.users.map(function (x) {
       return '<option value="' + x.id + '"' + (x.id === state.currentUserId ? " selected" : "") + '>' + esc(x.name) + '</option>';
     }).join("");
-    var cartBtn = "";
-    if ((state.ui.screen === "event" || state.ui.screen === "checkout") && state.ui.eventId) {
-      var cev = eventById(state.ui.eventId);
-      if (cev) {
-        var cnt = cartCount(cev, state.currentUserId);
-        cartBtn = '<button class="iconbtn cartbtn" title="Your cart / checkout" onclick="MS.openCheckout(\'' + cev.id + '\')">🛒' + (cnt > 0 ? '<span class="cartbadge">' + cnt + '</span>' : '') + '</button>';
-      }
-    }
+    var ccnt = cartCount(state.currentUserId);
+    var cartBtn = '<button class="iconbtn cartbtn" title="Your cart" onclick="MS.openCheckout()">🛒' + (ccnt > 0 ? '<span class="cartbadge">' + ccnt + '</span>' : '') + '</button>';
     return '' +
       '<div class="appbar">' +
         '<div class="row">' +
           '<span class="brand">' + LOGO_SVG + '<span>Makan Split</span></span>' +
           '<span class="spacer"></span>' + installBtn + cartBtn +
-          '<button class="iconbtn" title="Who are you?" onclick="MS.nav(\'identity\')">🔄</button>' +
-          '<button class="iconbtn" title="People" onclick="MS.nav(\'people\')">👥</button>' +
         '</div>' +
         '<div class="userbar">' + avatar(u, 30) +
           '<div class="who"><b>You are ' + esc(firstName(u)) + '</b></div>' +
@@ -585,62 +579,76 @@
 
   function sumline(label, val) { return '<div class="sumline"><span class="muted">' + esc(label) + '</span><span>' + val + '</span></div>'; }
 
-  /* ---------------------------- CHECKOUT -------------------------------- */
+  /* ---------------------------- CHECKOUT (global cart) ------------------ */
   function screenCheckout() {
-    var ev = eventById(state.ui.eventId);
-    if (!ev) { state.ui.screen = "home"; return screenHome(); }
     var me = state.currentUserId;
-    var html = '<button class="backbtn" onclick="MS.openEvent(\'' + ev.id + '\')">‹ Back to event</button>';
+    var oweList = state.events.filter(function (e) { return e.payerId !== me && share(e, me).total > EPS; });
+    var owedList = state.events.filter(function (e) { return e.payerId === me; });
 
-    if (ev.payerId === me) {
-      // Payer: collect view.
-      var info = settleInfo(ev), owed = info.transfers.filter(function (t) { return t.to === me; });
-      html += '<h2 class="title">🛒 Collect payment</h2>' +
-        '<div class="sub" style="margin:-6px 2px 12px">' + esc(ev.name) + ' · you paid ' + money(summary(ev).grand) + '</div>' +
-        '<div class="card"><h3>Who owes you</h3>';
-      if (!owed.length) html += '<div class="sub">No one owes you — all settled ✓</div>';
-      owed.forEach(function (t) {
-        var paid = transferPaid(ev, t), from = userById(t.from);
-        html += '<div class="xfer' + (paid ? " dim" : "") + '">' + avatar(from, 26) +
-          '<div style="flex:1;min-width:0"><b' + (paid ? ' class="strike"' : '') + '>' + esc(firstName(from)) + '</b></div>' +
-          '<span class="xamt' + (paid ? ' strike" ' : '"') + '>' + money(t.amount) + '</span>' +
-          '<button class="btn btn-sm ' + (paid ? "btn-ghost" : "btn-teal") + '" onclick="MS.markPaid(\'' + ev.id + '\',' + t.from + ',' + t.to + ',' + (paid ? "false" : "true") + ')">' + (paid ? "Undo" : "Mark paid") + '</button></div>';
-      });
-      html += '</div><button class="btn btn-primary btn-block" onclick="MS.nav(\'home\')">Done</button>';
-      return html;
-    }
+    var html = '<button class="backbtn" onclick="MS.nav(\'home\')">‹ Back</button>' +
+      '<h2 class="title">🛒 Your cart</h2>' +
+      '<div class="sub" style="margin:-6px 2px 12px">Everything you owe across all your events, and who to pay.</div>';
 
-    // Diner: cart / checkout.
-    var cart = (ev.items || []).filter(function (it) { return (it.assignedTo || []).indexOf(me) !== -1; });
-    var s = share(ev, me), mineT = settleInfo(ev).transfers.filter(function (t) { return t.from === me; })[0];
-    var paid = mineT ? transferPaid(ev, mineT) : (s.total <= EPS);
-    var payer = userById(ev.payerId);
-
-    html += '<h2 class="title">🛒 Checkout</h2>' +
-      '<div class="sub" style="margin:-6px 2px 12px">' + esc(ev.name) + ' · paying ' + esc(firstName(payer)) + '</div>';
-
-    html += '<div class="card"><h3>Your cart <span class="hint">' + cart.length + ' item' + (cart.length === 1 ? '' : 's') + '</span></h3>';
-    if (!cart.length) html += '<div class="sub">Your cart is empty — go back and tap “🛒 Add to cart” on what you had.</div>';
-    cart.forEach(function (it) {
-      var nn = (it.assignedTo || []).length, head = lineTotal(it) / nn;
-      html += '<div class="rowline"><span class="lb">' + esc(it.name) + (it.shared ? ' <span class="tag shared">shared ÷' + nn + '</span>' : '') + '</span><span class="rt">' + money(head) + '</span></div>';
+    // Overall owed + who to pay (grouped by payer).
+    var totalOwe = 0, payerTotals = {};
+    oweList.forEach(function (e) {
+      if (transferPaid(e, { from: me, to: e.payerId })) return;
+      var t = share(e, me).total;
+      totalOwe += t; payerTotals[e.payerId] = (payerTotals[e.payerId] || 0) + t;
     });
+
+    html += '<div class="card"><h3>You owe</h3>';
+    if (totalOwe <= EPS) {
+      html += '<span class="pill done">Nothing to pay — you’re all settled ✓</span>';
+    } else {
+      html += '<div class="sumline total" style="border-top:0;margin-top:0"><span>Total to pay</span><span>' + money(totalOwe) + '</span></div>' +
+        '<div style="margin-top:8px;font-weight:700;font-size:13px">Pay to</div>';
+      Object.keys(payerTotals).map(Number).forEach(function (pid) {
+        html += '<div class="rowline"><span class="lb" style="display:flex;align-items:center;gap:8px">' + avatar(userById(pid), 22) + esc(firstName(userById(pid))) + '</span><span class="rt">' + money(payerTotals[pid]) + '</span></div>';
+      });
+    }
     html += '</div>';
 
-    html += '<div class="card yourshare"><h3 style="color:#fff">Total to pay</h3>' +
-      sumline("Items subtotal", money(s.sub)) +
-      (ev.serviceChargeEnabled ? sumline("Service charge (" + (Number(ev.serviceChargeRate) || 0) + "%)", money(s.sc)) : "") +
-      (ev.sstEnabled ? sumline("SST (" + (Number(ev.sstRate) || 0) + "%)", money(s.sst)) : "") +
-      '<div class="sumline total"><span>Pay ' + esc(firstName(payer)) + '</span><span>' + money(s.total) + '</span></div></div>';
+    // Per-event breakdown — each item labelled with the event it belongs to.
+    if (!oweList.length) html += '<div class="card"><div class="sub">Your cart is empty. Open an event and tap “🛒 Add to cart” on what you had.</div></div>';
+    oweList.forEach(function (e) {
+      var cart = (e.items || []).filter(function (it) { return (it.assignedTo || []).indexOf(me) !== -1; });
+      var s = share(e, me), paid = transferPaid(e, { from: me, to: e.payerId });
+      html += '<div class="card" style="' + (paid ? "opacity:.55" : "") + '"><h3>' + esc(e.name) + ' <span class="hint">' + esc(fmtDate(e.date)) + '</span></h3>' +
+        '<div class="sub" style="margin:-4px 0 8px">Pay ' + esc(firstName(userById(e.payerId))) + '</div>';
+      cart.forEach(function (it) {
+        var nn = (it.assignedTo || []).length, head = lineTotal(it) / nn;
+        html += '<div class="rowline"><span class="lb">' + esc(it.name) + (it.shared ? ' <span class="tag shared">shared ÷' + nn + '</span>' : '') + '</span><span class="rt">' + money(head) + '</span></div>';
+      });
+      html += sumline("Subtotal", money(s.sub));
+      if (s.sc > EPS) html += sumline("Service charge", money(s.sc));
+      if (s.sst > EPS) html += sumline("SST", money(s.sst));
+      html += '<div class="sumline total"><span>' + (paid ? "Paid ✓" : "You owe " + esc(firstName(userById(e.payerId)))) + '</span><span' + (paid ? ' class="strike"' : '') + '>' + money(s.total) + '</span></div>' +
+        '<button class="btn btn-sm ' + (paid ? "btn-ghost" : "btn-teal") + ' btn-block" style="margin-top:8px" onclick="MS.markCartPaid(\'' + e.id + '\',' + (paid ? "false" : "true") + ')">' + (paid ? "Undo" : "✓ Mark paid") + '</button>' +
+      '</div>';
+    });
 
-    if (paid) {
-      html += '<div class="pill done" style="display:block;text-align:center;margin-bottom:10px">✓ Paid — thank you!</div>' +
-        '<button class="btn btn-primary btn-block" onclick="MS.nav(\'home\')">Back to home</button>';
-    } else if (s.total <= EPS) {
-      html += '<button class="btn btn-primary btn-block" onclick="MS.nav(\'home\')">Nothing to pay — back to home</button>';
-    } else {
-      html += '<button class="btn btn-teal btn-block" style="font-size:16px;padding:15px" onclick="MS.checkoutPay(\'' + ev.id + '\')">✓ Mark paid &amp; done</button>';
+    // Owed to you — when you're the payer in some events.
+    var totalOwed = 0, owedRows = [];
+    owedList.forEach(function (e) {
+      settleInfo(e).transfers.filter(function (t) { return t.to === me; }).forEach(function (t) {
+        var paid = transferPaid(e, t);
+        if (!paid) totalOwed += t.amount;
+        owedRows.push({ ev: e, t: t, paid: paid });
+      });
+    });
+    if (owedRows.length) {
+      html += '<div class="card"><h3>💰 Owed to you <span class="hint">' + money(totalOwed) + ' outstanding</span></h3>';
+      owedRows.forEach(function (r) {
+        html += '<div class="xfer' + (r.paid ? " dim" : "") + '">' + avatar(userById(r.t.from), 26) +
+          '<div style="flex:1;min-width:0"><b' + (r.paid ? ' class="strike"' : '') + '>' + esc(firstName(userById(r.t.from))) + '</b><div class="sub">' + esc(r.ev.name) + '</div></div>' +
+          '<span class="xamt' + (r.paid ? ' strike" ' : '"') + '>' + money(r.t.amount) + '</span>' +
+          '<button class="btn btn-sm ' + (r.paid ? "btn-ghost" : "btn-teal") + '" onclick="MS.markPaid(\'' + r.ev.id + '\',' + r.t.from + ',' + r.t.to + ',' + (r.paid ? "false" : "true") + ')">' + (r.paid ? "Undo" : "Got it") + '</button></div>';
+      });
+      html += '</div>';
     }
+
+    html += '<button class="btn btn-primary btn-block" onclick="MS.nav(\'home\')">Back to home</button>';
     return html;
   }
 
@@ -756,20 +764,21 @@
     }
     return '<h2 class="title">📖 How to use Makan Split</h2>' +
       '<div class="card"><h3>The basics</h3>' +
-        step(1, "Pick who you are", "Tap 🔄 at the top any time to switch to another person.") +
+        step(1, "Pick who you are", "Use the “You are …” dropdown at the top to switch to another person any time.") +
         step(2, "Create an event", "One event = one meal. Set the name, the date, and who paid the bill.") +
-        step(3, "Add the items", "Punch in each line with a unit price and quantity. Tap 💾 Save to commit an edit.") +
-        step(4, "Mark shared items", "Flip “Shared” and tap the people who split it. Use ＋ More to add a friend who wasn’t in the event.") +
+        step(3, "Payer adds, payees select", "Only the payer can input the items. Everyone else (the payees) can see the list and select which items are theirs.") +
+        step(4, "Add the items", "The payer punches in each line with a unit price and quantity, then taps 💾 Save to commit an edit.") +
+        step(5, "Mark shared items", "The payer flips “Shared” and taps the people who split it. Use ＋ More to add a friend who wasn’t in the event.") +
       '</div>' +
       '<div class="card"><h3>Paying your share</h3>' +
-        step(5, "Add to cart", "As a diner, tap 🛒 Add to cart on the items you had.") +
-        step(6, "Checkout", "Tap the 🛒 cart icon (top-right) to see your total and who to pay, then Mark paid — you’ll return to the home page.") +
+        step(6, "Add to cart", "As a payee, tap 🛒 Add to cart on the items you had.") +
+        step(7, "Checkout", "Tap the 🛒 cart icon (top-right) to see your total across all events and who to pay, then Mark paid.") +
       '</div>' +
       '<div class="card"><h3>Settling up</h3>' +
-        step(7, "Service charge & SST", "The payer sets the rates (Malaysia: 10% service charge + 6% SST on the subtotal). Set a rate to 0 to remove it.") +
-        step(8, "Who owes who", "Each event’s “Settle up” shows who pays the payer, with a Mark paid button.") +
-        step(9, "Combine meals", "On the Events page, “🧮 Settle several events together” nets lunch + tea + dinner into the fewest payments.") +
-        step(10, "Summary tab", "📊 Summary shows the overall who-owes-who across every event.") +
+        step(8, "Service charge & SST", "The payer sets the rates (Malaysia: 10% service charge + 6% SST on the subtotal). Set a rate to 0 to remove it.") +
+        step(9, "Who owes who", "Each event’s “Settle up” shows who pays the payer, with a Mark paid button.") +
+        step(10, "Combine meals", "On the Events page, “🧮 Settle several events together” nets lunch + tea + dinner into the fewest payments.") +
+        step(11, "Summary tab", "📊 Summary shows the overall who-owes-who across every event.") +
       '</div>' +
       '<div class="note" style="text-align:center">Everything is saved on your device — no account needed.</div>';
   }
@@ -876,13 +885,18 @@
     // Mark a person settled across the combined (or all) events; syncs to each event.
     markCombinedPaid: function (fromId, val) { settleAcross(state.events.filter(function (e) { return combineSel[e.id]; }), Number(fromId), val); },
     markSummaryPaid: function (fromId, val) { settleAcross(state.events.slice(), Number(fromId), val); },
-    openCheckout: function (id) { state.ui = { screen: "checkout", eventId: id }; save(); render(); },
-    checkoutPay: function (eventId) {
+    openCheckout: function () { state.ui = { screen: "checkout", eventId: null }; save(); render(); },
+    markCartPaid: function (eventId, val) {
       var ev = eventById(eventId); if (!ev) return;
       var me = state.currentUserId;
       if (!ev.paid) ev.paid = {};
-      if (ev.payerId !== me && share(ev, me).total > EPS) ev.paid[xferKey(me, ev.payerId)] = true;
-      state.ui = { screen: "home", eventId: null }; save(); render();   // redirect home after paying
+      var k = xferKey(me, ev.payerId);
+      if (val) ev.paid[k] = true; else delete ev.paid[k];
+      save();
+      // Paid off everything you owe? Celebrate by heading home.
+      var stillOwe = state.events.some(function (e) { return e.payerId !== me && share(e, me).total > EPS && !transferPaid(e, { from: me, to: e.payerId }); });
+      if (val && !stillOwe) state.ui = { screen: "home", eventId: null };
+      render();
     },
     deleteEvent: function (eventId) {
       var ev = eventById(eventId);
